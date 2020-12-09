@@ -20,7 +20,7 @@ async fn load_data_from_redis(id: i32) -> i32 { id }
 
 let id = 4;
 use scientist::Experiment;
-let result = Experiment::new()
+let result = Experiment::new("load_data_from_db => load_data_from_redis")
     .control(load_data_from_db(id))
     .experimental(load_data_from_redis(id))
     .rollout_strategy(0.005)

@@ -19,7 +19,7 @@
 //! # tokio_test::block_on(async {
 //! let id = 4;
 //! use scientist::Experiment;
-//! let result = Experiment::new()
+//! let result = Experiment::new("redis migration")
 //!     .control(load_data_from_db(id))
 //!     .experimental(load_data_from_redis(id))
 //!     .rollout_strategy(0.005)

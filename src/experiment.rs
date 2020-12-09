@@ -5,12 +5,13 @@ use crate::rollout::{RolloutDecision, RolloutStrategy};
 
 /// An individual experiment. See crate-level documentation for an example on how
 /// to use
-pub struct Experiment<T, C, E, R, M> {
+pub struct Experiment<'a, T, C, E, R, M> {
     result_type: PhantomData<T>,
     control_builder: C,
     experimental_builder: E,
     rollout_strategy: R,
     on_mismatch: M,
+    name: &'a str,
 }
 
 #[derive(Debug)]
@@ -24,15 +25,16 @@ pub struct Mismatch<T> {
     pub experimental: T,
 }
 
-impl<T> Experiment<T, (), (), (), Box<dyn FnOnce(Mismatch<T>) -> T>>
+impl<'a, T> Experiment<'a, T, (), (), (), Box<dyn FnOnce(Mismatch<T>) -> T>>
 where
     T: PartialEq,
 {
     /// Create a new experiment. The only provided default is accepting the
     /// control value in the mismatch handler. All other builder-style functions
     /// must be called before `run` can be called.
-    pub fn new() -> Self {
+    pub fn new(name: &'a str) -> Self {
         Self {
+            name,
             result_type: PhantomData,
             control_builder: (),
             experimental_builder: (),
@@ -42,15 +44,16 @@ where
     }
 }
 
-impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
+impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
     /// Use the future given here as the control, or the existing method for
     /// calculating a value
-    pub fn control<NC>(self, control_builder: NC) -> Experiment<T, NC, E, R, M>
+    pub fn control<NC>(self, control_builder: NC) -> Experiment<'a, T, NC, E, R, M>
     where
         NC: Future<Output = T>,
     {
         Experiment {
             control_builder,
+            name: self.name,
             experimental_builder: self.experimental_builder,
             result_type: self.result_type,
             rollout_strategy: self.rollout_strategy,
@@ -60,12 +63,13 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
 
     /// Use the future given here as the experimental, or the new method for
     /// calculating a value
-    pub fn experimental<NE>(self, experiment_builder: NE) -> Experiment<T, C, NE, R, M>
+    pub fn experimental<NE>(self, experimental_builder: NE) -> Experiment<'a, T, C, NE, R, M>
     where
         NE: Future<Output = T>,
     {
         Experiment {
-            experimental_builder: experiment_builder,
+            experimental_builder,
+            name: self.name,
             result_type: self.result_type,
             control_builder: self.control_builder,
             rollout_strategy: self.rollout_strategy,
@@ -74,9 +78,10 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
     }
 
     /// Use the given strategy for rolling out the new code
-    pub fn rollout_strategy<NR>(self, rollout_strategy: NR) -> Experiment<T, C, E, NR, M> {
+    pub fn rollout_strategy<NR>(self, rollout_strategy: NR) -> Experiment<'a, T, C, E, NR, M> {
         Experiment {
             rollout_strategy,
+            name: self.name,
             result_type: self.result_type,
             control_builder: self.control_builder,
             experimental_builder: self.experimental_builder,
@@ -88,12 +93,13 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
     /// value from the control and experimental methods. This can only happen
     /// when the rollout strategy returns
     /// `RolloutDecision::UseExperimentalAndCompare`.
-    pub fn on_mismatch<NM>(self, on_mismatch: NM) -> Experiment<T, C, E, R, NM>
+    pub fn on_mismatch<NM>(self, on_mismatch: NM) -> Experiment<'a, T, C, E, R, NM>
     where
         NM: FnOnce(Mismatch<T>) -> T,
     {
         Experiment {
             on_mismatch,
+            name: self.name,
             rollout_strategy: self.rollout_strategy,
             result_type: self.result_type,
             control_builder: self.control_builder,
@@ -140,7 +146,7 @@ mod tests {
     async fn it_resolves_conflict_with_mismatch() {
         let mut experimental = true;
 
-        let exists = Experiment::new()
+        let exists = Experiment::new("test")
             .control(async { true })
             .experimental(async {
                 experimental = !experimental;
