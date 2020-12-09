@@ -27,7 +27,11 @@ let result = Experiment::new("load_data_from_db => load_data_from_redis")
     .experimental(load_data_from_redis(id))
     .rollout_strategy(0.005)
     .on_mismatch(|mismatch| {
-        eprintln!("DB & Redis data differ - db={}, redis={}", mismatch.control, mismatch.experimental);
+        eprintln!(
+            "DB & Redis data differ - db={}, redis={}",
+            mismatch.control,
+            mismatch.experimental,
+        );
 
         // the `control` value here comes from the DB
         mismatch.control
