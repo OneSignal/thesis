@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::marker::PhantomData;
+use tracing::{info_span, instrument::Instrumented, Instrument};
 
 use crate::rollout::{RolloutDecision, RolloutStrategy};
 
@@ -44,15 +45,22 @@ where
     }
 }
 
+fn span<F, T>(future: F, method: &str) -> Instrumented<F>
+where
+    F: Future<Output = T>,
+{
+    future.instrument(info_span!("Experiment::decision", method))
+}
+
 impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
     /// Use the future given here as the control, or the existing method for
     /// calculating a value
-    pub fn control<NC>(self, control_builder: NC) -> Experiment<'a, T, NC, E, R, M>
+    pub fn control<NC>(self, control_builder: NC) -> Experiment<'a, T, Instrumented<NC>, E, R, M>
     where
         NC: Future<Output = T>,
     {
         Experiment {
-            control_builder,
+            control_builder: span(control_builder, "control"),
             name: self.name,
             experimental_builder: self.experimental_builder,
             result_type: self.result_type,
@@ -63,12 +71,15 @@ impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
 
     /// Use the future given here as the experimental, or the new method for
     /// calculating a value
-    pub fn experimental<NE>(self, experimental_builder: NE) -> Experiment<'a, T, C, NE, R, M>
+    pub fn experimental<NE>(
+        self,
+        experimental_builder: NE,
+    ) -> Experiment<'a, T, C, Instrumented<NE>, R, M>
     where
         NE: Future<Output = T>,
     {
         Experiment {
-            experimental_builder,
+            experimental_builder: span(experimental_builder, "experimental"),
             name: self.name,
             result_type: self.result_type,
             control_builder: self.control_builder,
@@ -116,25 +127,31 @@ impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
         C: Future<Output = T>,
         E: Future<Output = T>,
     {
-        match self.rollout_strategy.rollout_decision() {
-            RolloutDecision::UseControl => self.control_builder.await,
-            RolloutDecision::UseExperimental => self.experimental_builder.await,
-            RolloutDecision::UseExperimentalAndCompare => {
-                let (control, experimental) =
-                    tokio::join!(self.control_builder, self.experimental_builder);
+        let span = info_span!("Experiment::run", name = self.name);
 
-                if control != experimental {
-                    let mismatch = Mismatch {
-                        control,
-                        experimental,
-                    };
+        async move {
+            match self.rollout_strategy.rollout_decision() {
+                RolloutDecision::UseControl => self.control_builder.await,
+                RolloutDecision::UseExperimental => self.experimental_builder.await,
+                RolloutDecision::UseExperimentalAndCompare => {
+                    let (control, experimental) =
+                        tokio::join!(self.control_builder, self.experimental_builder);
 
-                    return (self.on_mismatch)(mismatch);
+                    if control != experimental {
+                        let mismatch = Mismatch {
+                            control,
+                            experimental,
+                        };
+
+                        return (self.on_mismatch)(mismatch);
+                    }
+
+                    control
                 }
-
-                control
             }
         }
+        .instrument(span)
+        .await
     }
 }
 
