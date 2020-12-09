@@ -183,7 +183,7 @@ mod tests {
                 experimental = !experimental;
                 experimental
             })
-            .rollout_strategy(50.0)
+            .rollout_strategy(0.5)
             .on_mismatch(|mismatch| {
                 assert_eq!(mismatch.control, true);
                 assert_eq!(mismatch.experimental, false);
@@ -194,5 +194,34 @@ mod tests {
             .await;
 
         assert_eq!(exists, true);
+    }
+
+    #[tokio::test]
+    async fn it_rolls_out_correctly() {
+        let mut trues = 0;
+        let mut falses = 0;
+
+        for _ in 0..10_000usize {
+            let exists = Experiment::new("test")
+                .control(async { true })
+                .experimental(async { false })
+                .rollout_strategy(0.05)
+                .on_mismatch(|mismatch| {
+                    mismatch.experimental
+                })
+                .run()
+                .await;
+
+                if exists {
+                    trues += 1;
+                } else {
+                    falses += 1;
+                }
+        }
+
+        let experimental_rate = falses as f64 / (trues + falses) as f64;
+
+        // Actual rate will be calculated via RNG, should be .04, .05, or .06.
+        assert!(0.04 < experimental_rate && experimental_rate < 0.07, "rate of experimental was {}", experimental_rate);
     }
 }
