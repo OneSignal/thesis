@@ -42,6 +42,26 @@ let result = Experiment::new("load_data_from_db => load_data_from_redis")
 assert_eq!(result, 4);
 ```
 
+# Monitoring
+
+Because scientist is designed to be used for refactoring operations in
+production systems, there are a few built-in features for monitoring and
+observability. Some contextual information is provided via spans created with
+the `tracing` crate, as well as some metrics via the `metrics` crate.
+
+## Metrics provided (with tags)
+
+- `scientist_experiment_run_total` - counter incremented each time the `run`
+  function is called
+    - `name` - name of the experiment provided to the constructor
+- `scientist_experiment_run_variant` - counter incremented each time a
+  variant (defined as control vs experimental) is run
+    - `name` - name of the experiment
+    - `kind` - one of `control`, `experimental`, `experimental_and_compare`
+- `scientist_experiment_run_mismatch` - counter incremented each time a
+   mismatch occurs between the experimental and control values
+    - `name` - name of the experiment
+
 # Limitations
 
 - The `control` and `experimental` futures must both have the same `Output`
@@ -52,3 +72,8 @@ assert_eq!(result, 4);
 - `control` and `experimental` must both be futures. A non-async version of
   `Experiment` could be written, but this library does not currently provide
   one.
+- The `name` provided to the experiment must be a `&'static str`. We use the
+  `metrics` library for reporting metric information, which requires us to
+  either to use an owned `String` each time an `Experiment` is created, or to
+  require a static string. Allocating a `String` seems more wasteful than
+  limiting dynamicly created experiment names.

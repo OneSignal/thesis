@@ -1,3 +1,4 @@
+use metrics::counter;
 use std::future::Future;
 use std::marker::PhantomData;
 use tracing::{info_span, instrument::Instrumented, Instrument};
@@ -6,13 +7,13 @@ use crate::rollout::{RolloutDecision, RolloutStrategy};
 
 /// An individual experiment. See crate-level documentation for an example on how
 /// to use
-pub struct Experiment<'a, T, C, E, R, M> {
+pub struct Experiment<T, C, E, R, M> {
     result_type: PhantomData<T>,
     control_builder: C,
     experimental_builder: E,
     rollout_strategy: R,
     on_mismatch: M,
-    name: &'a str,
+    name: &'static str,
 }
 
 #[derive(Debug)]
@@ -26,14 +27,14 @@ pub struct Mismatch<T> {
     pub experimental: T,
 }
 
-impl<'a, T> Experiment<'a, T, (), (), (), Box<dyn FnOnce(Mismatch<T>) -> T>>
+impl<T> Experiment<T, (), (), (), Box<dyn FnOnce(Mismatch<T>) -> T>>
 where
     T: PartialEq,
 {
     /// Create a new experiment. The only provided default is accepting the
     /// control value in the mismatch handler. All other builder-style functions
     /// must be called before `run` can be called.
-    pub fn new(name: &'a str) -> Self {
+    pub fn new(name: &'static str) -> Self {
         Self {
             name,
             result_type: PhantomData,
@@ -52,10 +53,10 @@ where
     future.instrument(info_span!("Experiment::decision", method))
 }
 
-impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
+impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
     /// Use the future given here as the control, or the existing method for
     /// calculating a value
-    pub fn control<NC>(self, control_builder: NC) -> Experiment<'a, T, Instrumented<NC>, E, R, M>
+    pub fn control<NC>(self, control_builder: NC) -> Experiment<T, Instrumented<NC>, E, R, M>
     where
         NC: Future<Output = T>,
     {
@@ -74,7 +75,7 @@ impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
     pub fn experimental<NE>(
         self,
         experimental_builder: NE,
-    ) -> Experiment<'a, T, C, Instrumented<NE>, R, M>
+    ) -> Experiment<T, C, Instrumented<NE>, R, M>
     where
         NE: Future<Output = T>,
     {
@@ -89,7 +90,7 @@ impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
     }
 
     /// Use the given strategy for rolling out the new code
-    pub fn rollout_strategy<NR>(self, rollout_strategy: NR) -> Experiment<'a, T, C, E, NR, M> {
+    pub fn rollout_strategy<NR>(self, rollout_strategy: NR) -> Experiment<T, C, E, NR, M> {
         Experiment {
             rollout_strategy,
             name: self.name,
@@ -104,7 +105,7 @@ impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
     /// value from the control and experimental methods. This can only happen
     /// when the rollout strategy returns
     /// `RolloutDecision::UseExperimentalAndCompare`.
-    pub fn on_mismatch<NM>(self, on_mismatch: NM) -> Experiment<'a, T, C, E, R, NM>
+    pub fn on_mismatch<NM>(self, on_mismatch: NM) -> Experiment<T, C, E, R, NM>
     where
         NM: FnOnce(Mismatch<T>) -> T,
     {
@@ -128,16 +129,29 @@ impl<'a, T, C, E, R, M> Experiment<'a, T, C, E, R, M> {
         E: Future<Output = T>,
     {
         let span = info_span!("Experiment::run", name = self.name);
+        counter!("scientist_experiment_run_total", 1, "name" => self.name);
 
         async move {
             match self.rollout_strategy.rollout_decision() {
-                RolloutDecision::UseControl => self.control_builder.await,
-                RolloutDecision::UseExperimental => self.experimental_builder.await,
+                RolloutDecision::UseControl => {
+                    counter!("scientist_experiment_run_variant", 1, "name" => self.name, "kind" => "control");
+
+                    self.control_builder.await
+                },
+                RolloutDecision::UseExperimental => {
+                    counter!("scientist_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental");
+
+                    self.experimental_builder.await
+                }
                 RolloutDecision::UseExperimentalAndCompare => {
+                    counter!("scientist_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
+
                     let (control, experimental) =
                         tokio::join!(self.control_builder, self.experimental_builder);
 
                     if control != experimental {
+                        counter!("scientist_experiment_run_mismatch", 1, "name" => self.name);
+
                         let mismatch = Mismatch {
                             control,
                             experimental,
