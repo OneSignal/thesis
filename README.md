@@ -1,5 +1,7 @@
 # Scientist
 
+Inspired by https://github.com/github/scientist
+
 Scientist provides the `Experiment` struct, which represents an experiment to
 run which compares the return values of multiple methods for accomplishing
 the same task.
@@ -35,3 +37,14 @@ let result = Experiment::new("load_data_from_db => load_data_from_redis")
 
 assert_eq!(result, 4);
 ```
+
+# Limitations
+
+- The `control` and `experimental` futures must both have the same `Output`
+  types
+- There are no defaults provided for `control`, `experimental`, or
+  `rollout_strategy`, all of these methods must be called or the experiment
+  will not compile.
+- `control` and `experimental` must both be futures. A non-async version of
+  `Experiment` could be written, but this library does not currently provide
+  one.
