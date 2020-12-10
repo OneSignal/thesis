@@ -1,4 +1,4 @@
-//! Scientist provides the `Experiment` struct, which represents an experiment to
+//! Thesis provides the `Experiment` struct, which represents an experiment to
 //! run which compares the return values of multiple methods for accomplishing
 //! the same task.
 //!
@@ -18,7 +18,7 @@
 //!
 //! # tokio_test::block_on(async {
 //! let id = 4;
-//! use scientist::Experiment;
+//! use thesis::Experiment;
 //! let result = Experiment::new("redis migration")
 //!     .control(load_data_from_db(id))
 //!     .experimental(load_data_from_redis(id))

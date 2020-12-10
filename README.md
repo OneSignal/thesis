@@ -1,8 +1,8 @@
-# Scientist
+# Thesis
 
 Inspired by https://github.com/github/scientist
 
-Scientist provides the `Experiment` struct, which represents an experiment to
+Thesis provides the `Experiment` struct, which represents an experiment to
 run which compares the return values of multiple methods for accomplishing
 the same task.
 
@@ -21,7 +21,7 @@ async fn load_data_from_db(id: i32) -> i32 { id }
 async fn load_data_from_redis(id: i32) -> i32 { id }
 
 let id = 4;
-use scientist::Experiment;
+use thesis::Experiment;
 let result = Experiment::new("load_data_from_db => load_data_from_redis")
     .control(load_data_from_db(id))
     .experimental(load_data_from_redis(id))
@@ -44,21 +44,21 @@ assert_eq!(result, 4);
 
 # Monitoring
 
-Because scientist is designed to be used for refactoring operations in
+Because thesis is designed to be used for refactoring operations in
 production systems, there are a few built-in features for monitoring and
 observability. Some contextual information is provided via spans created with
 the `tracing` crate, as well as some metrics via the `metrics` crate.
 
 ## Metrics provided (with tags)
 
-- `scientist_experiment_run_total` - counter incremented each time the `run`
+- `thesis_experiment_run_total` - counter incremented each time the `run`
   function is called
     - `name` - name of the experiment provided to the constructor
-- `scientist_experiment_run_variant` - counter incremented each time a
+- `thesis_experiment_run_variant` - counter incremented each time a
   variant (defined as control vs experimental) is run
     - `name` - name of the experiment
     - `kind` - one of `control`, `experimental`, `experimental_and_compare`
-- `scientist_experiment_run_mismatch` - counter incremented each time a
+- `thesis_experiment_run_mismatch` - counter incremented each time a
    mismatch occurs between the experimental and control values
     - `name` - name of the experiment
 
