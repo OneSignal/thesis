@@ -129,28 +129,28 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
         E: Future<Output = T>,
     {
         let span = info_span!("Experiment::run", name = self.name);
-        counter!("scientist_experiment_run_total", 1, "name" => self.name);
+        counter!("thesis_experiment_run_total", 1, "name" => self.name);
 
         async move {
             match self.rollout_strategy.rollout_decision() {
                 RolloutDecision::UseControl => {
-                    counter!("scientist_experiment_run_variant", 1, "name" => self.name, "kind" => "control");
+                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "control");
 
                     self.control_builder.await
                 },
                 RolloutDecision::UseExperimental => {
-                    counter!("scientist_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental");
+                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental");
 
                     self.experimental_builder.await
                 }
                 RolloutDecision::UseExperimentalAndCompare => {
-                    counter!("scientist_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
+                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
 
                     let (control, experimental) =
                         tokio::join!(self.control_builder, self.experimental_builder);
 
                     if control != experimental {
-                        counter!("scientist_experiment_run_mismatch", 1, "name" => self.name);
+                        counter!("thesis_experiment_run_mismatch", 1, "name" => self.name);
 
                         let mismatch = Mismatch {
                             control,
