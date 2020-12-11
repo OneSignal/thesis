@@ -13,16 +13,17 @@
 //! this.
 //!
 //! ```
+//! use thesis::{Experiment, rollout::Ratio};
+//!
 //! async fn load_data_from_db(id: i32) -> i32 { id }
 //! async fn load_data_from_redis(id: i32) -> i32 { id }
 //!
 //! # tokio_test::block_on(async {
 //! let id = 4;
-//! use thesis::Experiment;
 //! let result = Experiment::new("redis migration")
 //!     .control(load_data_from_db(id))
 //!     .experimental(load_data_from_redis(id))
-//!     .rollout_strategy(0.005)
+//!     .rollout_strategy(Ratio::new(0.005))
 //!     .on_mismatch(|mismatch| {
 //!         eprintln!(
 //!             "DB & Redis data differ - db={}, redis={}",
