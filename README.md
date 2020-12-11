@@ -17,15 +17,16 @@ discarding the redis data if so. Here's how we can use an `Experiment` to do
 this.
 
 ```rust
+use thesis::{Experiment, rollout::Percent};
+
 async fn load_data_from_db(id: i32) -> i32 { id }
 async fn load_data_from_redis(id: i32) -> i32 { id }
 
 let id = 4;
-use thesis::Experiment;
 let result = Experiment::new("load_data_from_db => load_data_from_redis")
     .control(load_data_from_db(id))
     .experimental(load_data_from_redis(id))
-    .rollout_strategy(0.005)
+    .rollout_strategy(Percent::new(0.5))
     .on_mismatch(|mismatch| {
         eprintln!(
             "DB & Redis data differ - db={}, redis={}",
