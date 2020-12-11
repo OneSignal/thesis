@@ -4,4 +4,4 @@
 
 # 0.2.0
 
-- Deprecated `impl RolloutStrategy for f64` in favor of the `Ratio` rollout strategy
+- Deprecated `impl RolloutStrategy for f64` in favor of the `Percent` rollout strategy

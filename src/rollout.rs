@@ -18,19 +18,19 @@ pub trait RolloutStrategy {
     fn rollout_decision(&self) -> RolloutDecision;
 }
 
-/// The simplest rollout strategy, a floating point number between 0 and 1 that
+/// The simplest rollout strategy, a floating point number between 0 and 100 that
 /// represents the percentage of requests which should use the experimental
 /// method. The experimental results will be compared to the control results.
-pub struct Ratio(f64);
+pub struct Percent(f64);
 
-impl Ratio {
-    /// Create a new rollout Ratio
-    pub fn new(ratio: f64) -> Self {
-        Self(ratio)
+impl Percent {
+    /// Create a new rollout Percent
+    pub fn new(percent: f64) -> Self {
+        Self(percent / 100.0)
     }
 }
 
-impl RolloutStrategy for Ratio {
+impl RolloutStrategy for Percent {
     fn rollout_decision(&self) -> RolloutDecision {
         let mut rng = rand::thread_rng();
 

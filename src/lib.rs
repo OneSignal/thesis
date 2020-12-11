@@ -13,7 +13,7 @@
 //! this.
 //!
 //! ```
-//! use thesis::{Experiment, rollout::Ratio};
+//! use thesis::{Experiment, rollout::Percent};
 //!
 //! async fn load_data_from_db(id: i32) -> i32 { id }
 //! async fn load_data_from_redis(id: i32) -> i32 { id }
@@ -23,7 +23,7 @@
 //! let result = Experiment::new("redis migration")
 //!     .control(load_data_from_db(id))
 //!     .experimental(load_data_from_redis(id))
-//!     .rollout_strategy(Ratio::new(0.005))
+//!     .rollout_strategy(Percent::new(0.5))
 //!     .on_mismatch(|mismatch| {
 //!         eprintln!(
 //!             "DB & Redis data differ - db={}, redis={}",

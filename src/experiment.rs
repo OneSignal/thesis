@@ -172,7 +172,7 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rollout::Ratio;
+    use crate::rollout::Percent;
 
     #[tokio::test]
     async fn it_resolves_conflict_with_mismatch() {
@@ -184,7 +184,7 @@ mod tests {
                 experimental = !experimental;
                 experimental
             })
-            .rollout_strategy(Ratio::new(0.5))
+            .rollout_strategy(Percent::new(50.0))
             .on_mismatch(|mismatch| {
                 assert_eq!(mismatch.control, true);
                 assert_eq!(mismatch.experimental, false);
@@ -206,7 +206,7 @@ mod tests {
             let exists = Experiment::new("test")
                 .control(async { true })
                 .experimental(async { false })
-                .rollout_strategy(Ratio::new(0.05))
+                .rollout_strategy(Percent::new(5.0))
                 .on_mismatch(|mismatch| {
                     mismatch.experimental
                 })
