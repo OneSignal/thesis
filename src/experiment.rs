@@ -1,4 +1,5 @@
 use metrics::counter;
+use std::fmt::Display;
 use std::future::Future;
 use std::marker::PhantomData;
 use tracing::{info_span, instrument::Instrumented, Instrument};
@@ -138,19 +139,14 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
 
                     self.control_builder.await
                 },
-                RolloutDecision::UseExperimental => {
-                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental");
-
-                    self.experimental_builder.await
-                }
-                RolloutDecision::UseExperimentalAndCompare => {
+               RolloutDecision::UseExperimentalAndCompare => {
                     counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
 
                     let (control, experimental) =
                         tokio::join!(self.control_builder, self.experimental_builder);
 
                     if control != experimental {
-                        counter!("thesis_experiment_run_mismatch", 1, "name" => self.name);
+                        outcome_mismatch(self.name);
 
                         let mismatch = Mismatch {
                             control,
@@ -161,6 +157,111 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
                     }
 
                     control
+                }
+            }
+        }
+        .instrument(span)
+        .await
+    }
+}
+
+fn outcome_error<E>(name: &'static str, kind: &'static str, error: &E)
+where
+    E: Display,
+{
+    counter!("thesis_experiment_outcome", 1, "name" => name, "kind" => kind, "outcome" => "error");
+    tracing::error!(name, kind, %error, "thesis experiment error");
+}
+
+fn outcome_ok(name: &'static str, kind: &'static str) {
+    counter!("thesis_experiment_outcome", 1, "name" => name, "kind" => kind, "outcome" => "ok");
+}
+
+fn outcome_mismatch(name: &'static str) {
+    counter!("thesis_experiment_outcome", 1, "name" => name, "kind" => "experimental_and_compare", "outcome" => "mismatch");
+}
+
+fn outcome<T, E>(name: &'static str, kind: &'static str, result: &Result<T, E>)
+where
+    E: Display,
+{
+    match result {
+        Ok(_) => {
+            outcome_ok(name, kind);
+        }
+        Err(e) => {
+            outcome_error(name, kind, e);
+        }
+    }
+}
+
+impl<T, Err, C, E, R, M> Experiment<Result<T, Err>, C, E, R, M> {
+    /// Run the experiment with the parameters provided
+    pub async fn run_result(self) -> Result<T, Err>
+    where
+        T: PartialEq,
+        R: RolloutStrategy,
+        M: FnOnce(Mismatch<Result<T, Err>>) -> Result<T, Err>,
+        C: Future<Output = Result<T, Err>>,
+        E: Future<Output = Result<T, Err>>,
+        Err: Display,
+    {
+        let span = info_span!("Experiment::run", name = self.name);
+        counter!("thesis_experiment_run_total", 1, "name" => self.name);
+
+        async move {
+            match self.rollout_strategy.rollout_decision() {
+                RolloutDecision::UseControl => {
+                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "control");
+
+                    let result = self.control_builder.await;
+                    outcome(self.name, "control", &result);
+
+                    result
+                },
+                RolloutDecision::UseExperimentalAndCompare => {
+                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
+
+                    let (control, experimental) =
+                        tokio::join!(self.control_builder, self.experimental_builder);
+
+                        outcome(self.name, "control", &control);
+                        outcome(self.name, "experimental", &experimental);
+
+                        match (control, experimental) {
+                            (Ok(control), Ok(experimental)) => {
+                                if control != experimental {
+                                    outcome_mismatch(self.name);
+
+                                    let mismatch = Mismatch {
+                                        control: Ok(control),
+                                        experimental: Ok(experimental),
+                                    };
+
+                                    return (self.on_mismatch)(mismatch);
+                                }
+
+                                Ok(control)
+                            }
+                            (Ok(control), Err(_)) => {
+                                outcome_mismatch(self.name);
+
+                                Ok(control)
+                            }
+                            (Err(control), Ok(experimental)) => {
+                                    outcome_mismatch(self.name);
+
+                                    let mismatch = Mismatch {
+                                        control: Err(control),
+                                        experimental: Ok(experimental),
+                                    };
+
+                                    return (self.on_mismatch)(mismatch);
+                            }
+                            (Err(control), Err(_)) => {
+                                Err(control)
+                            }
+                        }
                 }
             }
         }
@@ -207,22 +308,74 @@ mod tests {
                 .control(async { true })
                 .experimental(async { false })
                 .rollout_strategy(Percent::new(5.0))
-                .on_mismatch(|mismatch| {
-                    mismatch.experimental
-                })
+                .on_mismatch(|mismatch| mismatch.experimental)
                 .run()
                 .await;
 
-                if exists {
-                    trues += 1;
-                } else {
-                    falses += 1;
-                }
+            if exists {
+                trues += 1;
+            } else {
+                falses += 1;
+            }
         }
 
         let experimental_rate = falses as f64 / (trues + falses) as f64;
 
         // Actual rate will be calculated via RNG, should be .04, .05, or .06.
-        assert!(0.04 < experimental_rate && experimental_rate < 0.07, "rate of experimental was {}", experimental_rate);
+        assert!(
+            0.04 < experimental_rate && experimental_rate < 0.07,
+            "rate of experimental was {}",
+            experimental_rate
+        );
+    }
+
+    #[tokio::test]
+    async fn it_works_with_results() {
+        let exists = Experiment::new("test")
+            .control(async { Ok::<_, &str>(true) })
+            .experimental(async { Ok::<_, &str>(false) })
+            .rollout_strategy(Percent::new(0.0))
+            .run_result()
+            .await;
+
+        assert_eq!(exists, Ok(true));
+    }
+
+    #[tokio::test]
+    async fn it_falls_back_to_control_when_experimental_fails() {
+        let mut seen = false;
+        let exists = Experiment::new("test")
+            .control(async { Ok::<_, &str>(true) })
+            .experimental(async {
+                seen = true;
+                Err::<bool, &str>("failed")
+            })
+            // Setting the percent to 100% ensures that we'll call the experimental builder
+            .rollout_strategy(Percent::new(100.0))
+            .run_result()
+            .await;
+
+        assert_eq!(exists, Ok(true));
+        assert_eq!(seen, true);
+    }
+
+    #[tokio::test]
+    async fn it_calls_mismatch_when_control_errs_and_experiment_is_ok() {
+        let mut seen = false;
+        let exists = Experiment::new("test")
+            .control(async { Err::<bool, &str>("failed") })
+            .experimental(async { Ok::<_, &str>(true) })
+            // Setting the percent to 100% ensures that we'll call the experimental builder
+            .rollout_strategy(Percent::new(100.0))
+            .on_mismatch(|m| {
+                seen = true;
+
+                m.experimental
+            })
+            .run_result()
+            .await;
+
+        assert_eq!(exists, Ok(true));
+        assert_eq!(seen, true);
     }
 }

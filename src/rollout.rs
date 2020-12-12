@@ -5,9 +5,6 @@ pub enum RolloutDecision {
     /// Run only the control method
     UseControl,
 
-    /// Run only the experimental method
-    UseExperimental,
-
     /// Run both methods concurrently and compare the results. If the results do
     /// not match, the `on_mismatch` handler will be run.
     UseExperimentalAndCompare,
