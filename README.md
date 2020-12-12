@@ -59,9 +59,30 @@ the `tracing` crate, as well as some metrics via the `metrics` crate.
   variant (defined as control vs experimental) is run
     - `name` - name of the experiment
     - `kind` - one of `control`, `experimental`, `experimental_and_compare`
-- `thesis_experiment_run_mismatch` - counter incremented each time a
-   mismatch occurs between the experimental and control values
+- `thesis_experiment_outcome` - counter incremented each time an experiment
+  has an observable outcome
     - `name` - name of the experiment
+    - `kind` - one of `control`, `experimental`, `experimental_and_compare`
+    - `outcome` - one of `ok`, `error`, `mismatch` (ok/error only produced
+    via `Experiment::run_result`)
+
+# Result handling
+
+If your experimental (or control) methods may return an error, you should use
+the `run_result` method on the `Experiment` builder. This method has special
+handling and metrics reporting for `Result` types. When
+`RolloutDecision::UseControl` is used and the experimental method is not
+called, `run_result` works the same as `run`. Nothing special happens, even
+if the control method returns an error. Here's what happens when
+`RolloutDecision::UseExperimentalAndCompare` is used.
+
+| Control  | Experimental | Return Value             | Metrics (label values of `thesis_experiment_outcome`)                                                                   | Logs                                                                                                      |
+|----------|--------------|--------------------------|-------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| `Ok(X)`  | `Ok(X)`      | `Ok(X)`                  | `{kind=control, outcome=ok}`, `{kind=experimental, outcome=ok}`                                                         |                                                                                                           |
+| `Ok(X)`  | `Ok(Y)`      | Result of `on_mismatch`  | `{kind=control, outcome=ok}`, `{kind=experimental, outcome=ok}`, `{kind=experimental_and_compare, outcome=mismatch}`    |                                                                                                           |
+| `Ok(X)`  | `Err(e)`     | `Ok(X)`                  | `{kind=control, outcome=ok}`, `{kind=experimental, outcome=error}`, `{kind=experimental_and_compare, outcome=mismatch}` | `"thesis experiment error" kind=experimental, error=e`                                                    |
+| `Err(e)` | `Ok(x)`      | Result of  `on_mismatch` | `{kind=control, outcome=error}`, `{kind=experimental, outcome=ok}`, `{kind=experimental_and_compare, outcome=mismatch}` | `"thesis experiment error" kind=control, error=e`                                                         |
+| `Err(e)` | `Err(f)`     | `Err(e)`                 | `{kind=control, outcome=error}`, `{kind=experimental, outcome=error}`                                                   | `"thesis experiment error" kind=control, error=e`, `"thesis experiment error" kind=experimental, error=f` |
 
 # Limitations
 
@@ -78,3 +99,4 @@ the `tracing` crate, as well as some metrics via the `metrics` crate.
   either to use an owned `String` each time an `Experiment` is created, or to
   require a static string. Allocating a `String` seems more wasteful than
   limiting dynamicly created experiment names.
+- When using `run_result`, both `Result` types must have the same `Err` type.
