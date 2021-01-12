@@ -28,10 +28,7 @@ pub struct Mismatch<T> {
     pub experimental: T,
 }
 
-impl<T> Experiment<T, (), (), (), Box<dyn FnOnce(Mismatch<T>) -> T>>
-where
-    T: PartialEq,
-{
+impl<T> Experiment<T, (), (), (), Box<dyn FnOnce(Mismatch<T>) -> T>> {
     /// Create a new experiment. The only provided default is accepting the
     /// control value in the mismatch handler. All other builder-style functions
     /// must be called before `run` can be called.
@@ -376,6 +373,38 @@ mod tests {
             .await;
 
         assert_eq!(exists, Ok(true));
+        assert_eq!(seen, true);
+    }
+
+    #[tokio::test]
+    async fn it_works_with_non_partialeq_errs() {
+        #[derive(Debug)]
+        struct NonPartialEq;
+
+        impl Display for NonPartialEq {
+            fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(fmt, "NonPartialEq")
+            }
+        }
+
+        let mut seen = false;
+        let exists = Experiment::new("test")
+            .control(async { Err::<bool, NonPartialEq>(NonPartialEq) })
+            .experimental(async { Ok::<_, NonPartialEq>(true) })
+            .rollout_strategy(Percent::new(100.0))
+            .on_mismatch(|m| {
+                seen = true;
+
+                m.experimental
+            })
+            .run_result()
+            .await;
+
+        match exists {
+            Ok(true) => {},
+            x => panic!("Unexpected result: {:?}", x),
+        }
+
         assert_eq!(seen, true);
     }
 }
