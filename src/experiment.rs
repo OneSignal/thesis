@@ -28,7 +28,7 @@ pub struct Mismatch<T> {
     pub experimental: T,
 }
 
-impl<T> Experiment<T, (), (), (), Box<dyn FnOnce(Mismatch<T>) -> T>> {
+impl<T> Experiment<T, (), (), (), Box<dyn Send + FnOnce(Mismatch<T>) -> T>> {
     /// Create a new experiment. The only provided default is accepting the
     /// control value in the mismatch handler. All other builder-style functions
     /// must be called before `run` can be called.
@@ -338,6 +338,17 @@ mod tests {
         assert_eq!(exists, Ok(true));
     }
 
+    #[test]
+    fn test_experiment_is_send() {
+        fn is_send(_: impl Send) {}
+
+        is_send(
+            Experiment::new("test")
+                .rollout_strategy(Percent::new(0.0))
+                .control(async { () }),
+        );
+    }
+
     #[tokio::test]
     async fn it_falls_back_to_control_when_experimental_fails() {
         let mut seen = false;
@@ -401,7 +412,7 @@ mod tests {
             .await;
 
         match exists {
-            Ok(true) => {},
+            Ok(true) => {}
             x => panic!("Unexpected result: {:?}", x),
         }
 
