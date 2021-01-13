@@ -43,6 +43,8 @@
 
 pub mod experiment;
 pub mod rollout;
+pub mod mismatch;
 
 pub use experiment::Experiment;
 pub use rollout::{RolloutDecision, RolloutStrategy};
+pub use mismatch::{MismatchHandler, Mismatch};
