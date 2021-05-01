@@ -12,3 +12,7 @@
 - Remove `RolloutDecision::UseExperimental`
 - Remove `thesis_experiment_run_mismatch` metric in favor of the more general
   `thesis_experiment_outcome`
+
+# 0.4.0
+
+- Upgrade to Tokio 1.0
