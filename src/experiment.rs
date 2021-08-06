@@ -4,8 +4,8 @@ use std::future::Future;
 use std::marker::PhantomData;
 use tracing::{info_span, instrument::Instrumented, Instrument};
 
-use crate::rollout::{RolloutDecision, RolloutStrategy};
 use crate::mismatch::{self, Mismatch, MismatchHandler};
+use crate::rollout::{RolloutDecision, RolloutStrategy};
 
 /// An individual experiment. See crate-level documentation for an example on how
 /// to use
@@ -17,7 +17,6 @@ pub struct Experiment<T, C, E, R, M> {
     mismatch_handler: M,
     name: &'static str,
 }
-
 
 impl<T> Experiment<T, (), (), (), mismatch::AlwaysControl> {
     /// Create a new experiment. The only provided default is accepting the
@@ -35,22 +34,32 @@ impl<T> Experiment<T, (), (), (), mismatch::AlwaysControl> {
     }
 }
 
-fn span<F, T>(future: F, method: &str) -> Instrumented<F>
+fn span_control<F, T>(future: F) -> Instrumented<F>
 where
     F: Future<Output = T>,
 {
-    future.instrument(info_span!("Experiment::decision", method))
+    future.instrument(info_span!("Experiment::run control", method = "control"))
+}
+
+fn span_experimental<F, T>(future: F) -> Instrumented<F>
+where
+    F: Future<Output = T>,
+{
+    future.instrument(info_span!(
+        "Experiment::run experimental",
+        method = "experimental"
+    ))
 }
 
 impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
     /// Use the future given here as the control, or the existing method for
     /// calculating a value
-    pub fn control<NC>(self, control_builder: NC) -> Experiment<T, Instrumented<NC>, E, R, M>
+    pub fn control<NC>(self, control_builder: NC) -> Experiment<T, NC, E, R, M>
     where
         NC: Future<Output = T>,
     {
         Experiment {
-            control_builder: span(control_builder, "control"),
+            control_builder,
             name: self.name,
             experimental_builder: self.experimental_builder,
             result_type: self.result_type,
@@ -61,15 +70,12 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
 
     /// Use the future given here as the experimental, or the new method for
     /// calculating a value
-    pub fn experimental<NE>(
-        self,
-        experimental_builder: NE,
-    ) -> Experiment<T, C, Instrumented<NE>, R, M>
+    pub fn experimental<NE>(self, experimental_builder: NE) -> Experiment<T, C, NE, R, M>
     where
         NE: Future<Output = T>,
     {
         Experiment {
-            experimental_builder: span(experimental_builder, "experimental"),
+            experimental_builder,
             name: self.name,
             result_type: self.result_type,
             control_builder: self.control_builder,
@@ -117,7 +123,7 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
         C: Future<Output = T>,
         E: Future<Output = T>,
     {
-        let span = info_span!("Experiment::run", name = self.name);
+        let span = info_span!("Experiment::run", experiment_name = self.name);
         counter!("thesis_experiment_run_total", 1, "name" => self.name);
 
         async move {
@@ -125,13 +131,13 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
                 RolloutDecision::UseControl => {
                     counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "control");
 
-                    self.control_builder.await
+                    span_control(self.control_builder).await
                 },
                RolloutDecision::UseExperimentalAndCompare => {
                     counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
 
                     let (control, experimental) =
-                        tokio::join!(self.control_builder, self.experimental_builder);
+                        tokio::join!(span_control(self.control_builder), span_experimental(self.experimental_builder));
 
                     if control != experimental {
                         outcome_mismatch(self.name);
@@ -194,7 +200,7 @@ impl<T, Err, C, E, R, M> Experiment<Result<T, Err>, C, E, R, M> {
         E: Future<Output = Result<T, Err>>,
         Err: Display,
     {
-        let span = info_span!("Experiment::run", name = self.name);
+        let span = info_span!("Experiment::run", experiment_name = self.name);
         counter!("thesis_experiment_run_total", 1, "name" => self.name);
 
         async move {
@@ -202,7 +208,7 @@ impl<T, Err, C, E, R, M> Experiment<Result<T, Err>, C, E, R, M> {
                 RolloutDecision::UseControl => {
                     counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "control");
 
-                    let result = self.control_builder.await;
+                    let result = span_control(self.control_builder).await;
                     outcome(self.name, "control", &result);
 
                     result
@@ -211,7 +217,7 @@ impl<T, Err, C, E, R, M> Experiment<Result<T, Err>, C, E, R, M> {
                     counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
 
                     let (control, experimental) =
-                        tokio::join!(self.control_builder, self.experimental_builder);
+                        tokio::join!(span_control(self.control_builder), span_experimental(self.experimental_builder));
 
                         outcome(self.name, "control", &control);
                         outcome(self.name, "experimental", &experimental);
