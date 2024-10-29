@@ -399,7 +399,7 @@ mod tests {
         let exists = Experiment::new("test")
             .control(async { Ok::<_, &str>(true) })
             .experimental(async { Ok::<_, &str>(false) })
-            .rollout_strategy(Percent::new(0.0))
+            .rollout_strategy(RolloutDecision::UseControl)
             .run_result()
             .await;
 
@@ -412,7 +412,7 @@ mod tests {
 
         is_send(
             Experiment::new("test")
-                .rollout_strategy(Percent::new(0.0))
+                .rollout_strategy(RolloutDecision::UseControl)
                 .control(async {}),
         );
     }
@@ -426,8 +426,7 @@ mod tests {
                 seen = true;
                 Err::<bool, &str>("failed")
             })
-            // Setting the percent to 100% ensures that we'll call the experimental builder
-            .rollout_strategy(Percent::new(100.0))
+            .rollout_strategy(RolloutDecision::UseExperimentalAndCompare)
             .run_result()
             .await;
 
@@ -441,8 +440,7 @@ mod tests {
         let exists = Experiment::new("test")
             .control(async { Err::<bool, &str>("failed") })
             .experimental(async { Ok::<_, &str>(true) })
-            // Setting the percent to 100% ensures that we'll call the experimental builder
-            .rollout_strategy(Percent::new(100.0))
+            .rollout_strategy(RolloutDecision::UseExperimentalAndCompare)
             .on_mismatch(|m| {
                 seen = true;
 
@@ -470,7 +468,7 @@ mod tests {
         let exists = Experiment::new("test")
             .control(async { Err::<bool, NonPartialEq>(NonPartialEq) })
             .experimental(async { Ok::<_, NonPartialEq>(true) })
-            .rollout_strategy(Percent::new(100.0))
+            .rollout_strategy(RolloutDecision::UseExperimentalAndCompare)
             .on_mismatch(|m| {
                 seen = true;
 

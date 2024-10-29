@@ -1,6 +1,7 @@
 use rand::Rng;
 
 /// A decision of if the control or experimental methods should be used
+#[derive(Clone, Copy)]
 pub enum RolloutDecision {
     /// Run only the control method
     UseControl,
@@ -13,6 +14,12 @@ pub enum RolloutDecision {
 /// A method for chosing if the control or experimental code should run
 pub trait RolloutStrategy {
     fn rollout_decision(&self) -> RolloutDecision;
+}
+
+impl RolloutStrategy for RolloutDecision {
+    fn rollout_decision(&self) -> RolloutDecision {
+        *self
+    }
 }
 
 /// The simplest rollout strategy, a floating point number between 0 and 100 that
