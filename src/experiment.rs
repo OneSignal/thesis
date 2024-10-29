@@ -293,7 +293,7 @@ impl<T, Err, C, E, R, M> Experiment<Result<T, Err>, C, E, R, M> {
                                 experimental: Ok(experimental),
                             };
 
-                            return self.mismatch_handler.on_mismatch(mismatch);
+                            self.mismatch_handler.on_mismatch(mismatch)
                         }
                         (Err(control), Err(_)) => Err(control),
                     }
@@ -322,15 +322,15 @@ mod tests {
             })
             .rollout_strategy(Percent::new(50.0))
             .on_mismatch(|mismatch| {
-                assert_eq!(mismatch.control, true);
-                assert_eq!(mismatch.experimental, false);
+                assert!(mismatch.control);
+                assert!(!mismatch.experimental);
 
                 mismatch.control
             })
             .run()
             .await;
 
-        assert_eq!(exists, true);
+        assert!(exists);
     }
 
     #[tokio::test]
@@ -383,7 +383,7 @@ mod tests {
         is_send(
             Experiment::new("test")
                 .rollout_strategy(Percent::new(0.0))
-                .control(async { () }),
+                .control(async {}),
         );
     }
 
@@ -402,7 +402,7 @@ mod tests {
             .await;
 
         assert_eq!(exists, Ok(true));
-        assert_eq!(seen, true);
+        assert!(seen);
     }
 
     #[tokio::test]
@@ -422,7 +422,7 @@ mod tests {
             .await;
 
         assert_eq!(exists, Ok(true));
-        assert_eq!(seen, true);
+        assert!(seen);
     }
 
     #[tokio::test]
@@ -454,6 +454,6 @@ mod tests {
             x => panic!("Unexpected result: {:?}", x),
         }
 
-        assert_eq!(seen, true);
+        assert!(seen);
     }
 }
