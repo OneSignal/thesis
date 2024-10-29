@@ -1,8 +1,9 @@
-use metrics::counter;
+use metrics::{counter, histogram};
 use std::fmt::Display;
 use std::future::Future;
 use std::marker::PhantomData;
-use tracing::{info_span, instrument::Instrumented, Instrument};
+use std::time::Instant;
+use tracing::{info_span, Instrument};
 
 use crate::mismatch::{self, Mismatch, MismatchHandler};
 use crate::rollout::{RolloutDecision, RolloutStrategy};
@@ -34,21 +35,50 @@ impl<T> Experiment<T, (), (), (), mismatch::AlwaysControl> {
     }
 }
 
-fn span_control<F, T>(future: F) -> Instrumented<F>
+async fn instrument_control<F, T>(name: &str, future: F) -> T
 where
     F: Future<Output = T>,
 {
-    future.instrument(info_span!("Experiment::run control", method = "control"))
+    measure_duration(
+        name,
+        "control",
+        future.instrument(info_span!("Experiment::run control", method = "control")),
+    )
+    .await
 }
 
-fn span_experimental<F, T>(future: F) -> Instrumented<F>
+async fn instrument_experimental<F, T>(name: &str, future: F) -> T
 where
     F: Future<Output = T>,
 {
-    future.instrument(info_span!(
-        "Experiment::run experimental",
-        method = "experimental"
-    ))
+    measure_duration(
+        name,
+        "experimental",
+        future.instrument(info_span!(
+            "Experiment::run experimental",
+            method = "experimental"
+        )),
+    )
+    .await
+}
+
+async fn measure_duration<F, T>(name: &str, kind: &'static str, future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    let name = name.to_owned();
+    let start = Instant::now();
+    let output = future.await;
+    let duration = start.elapsed();
+
+    histogram!(
+        "thesis_experiment_run_duration",
+        "name" => name,
+        "kind" => kind,
+    )
+    .record(duration);
+
+    output
 }
 
 impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
@@ -136,7 +166,7 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
                     )
                     .increment(1);
 
-                    span_control(self.control_builder).await
+                    instrument_control(self.name, self.control_builder).await
                 }
                 RolloutDecision::UseExperimentalAndCompare => {
                     counter!(
@@ -147,8 +177,8 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
                     .increment(1);
 
                     let (control, experimental) = tokio::join!(
-                        span_control(self.control_builder),
-                        span_experimental(self.experimental_builder)
+                        instrument_control(self.name, self.control_builder),
+                        instrument_experimental(self.name, self.experimental_builder),
                     );
 
                     if control != experimental {
@@ -244,22 +274,22 @@ impl<T, Err, C, E, R, M> Experiment<Result<T, Err>, C, E, R, M> {
                     )
                     .increment(1);
 
-                    let result = span_control(self.control_builder).await;
+                    let result = instrument_control(self.name, self.control_builder).await;
                     outcome(self.name, "control", &result);
 
                     result
                 }
                 RolloutDecision::UseExperimentalAndCompare => {
                     counter!(
-                    "thesis_experiment_run_variant",
-                    "name" => self.name,
-                    "kind" => "experimental_and_compare",
+                        "thesis_experiment_run_variant",
+                        "name" => self.name,
+                        "kind" => "experimental_and_compare",
                     )
                     .increment(1);
 
                     let (control, experimental) = tokio::join!(
-                        span_control(self.control_builder),
-                        span_experimental(self.experimental_builder)
+                        instrument_control(self.name, self.control_builder),
+                        instrument_experimental(self.name, self.experimental_builder)
                     );
 
                     outcome(self.name, "control", &control);
