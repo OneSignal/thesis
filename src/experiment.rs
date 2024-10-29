@@ -127,17 +127,27 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
         E: Future<Output = T>,
     {
         let span = info_span!("Experiment::run", name = self.name);
-        counter!("thesis_experiment_run_total", 1, "name" => self.name);
+        counter!("thesis_experiment_run_total", "name" => self.name).increment(1);
 
         async move {
             match self.rollout_strategy.rollout_decision() {
                 RolloutDecision::UseControl => {
-                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "control");
+                    counter!(
+                        "thesis_experiment_run_variant",
+                        "name" => self.name,
+                        "kind" => "control",
+                    )
+                    .increment(1);
 
                     self.control_builder.await
-                },
-               RolloutDecision::UseExperimentalAndCompare => {
-                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
+                }
+                RolloutDecision::UseExperimentalAndCompare => {
+                    counter!(
+                        "thesis_experiment_run_variant",
+                        "name" => self.name,
+                        "kind" => "experimental_and_compare",
+                    )
+                    .increment(1);
 
                     let (control, experimental) =
                         tokio::join!(self.control_builder, self.experimental_builder);
@@ -166,16 +176,35 @@ fn outcome_error<E>(name: &'static str, kind: &'static str, error: &E)
 where
     E: Display,
 {
-    counter!("thesis_experiment_outcome", 1, "name" => name, "kind" => kind, "outcome" => "error");
+    counter!(
+        "thesis_experiment_outcome",
+        "name" => name,
+        "kind" => kind,
+        "outcome" => "error",
+    )
+    .increment(1);
+
     tracing::error!(name, kind, %error, "thesis experiment error");
 }
 
 fn outcome_ok(name: &'static str, kind: &'static str) {
-    counter!("thesis_experiment_outcome", 1, "name" => name, "kind" => kind, "outcome" => "ok");
+    counter!(
+        "thesis_experiment_outcome",
+        "name" => name,
+        "kind" => kind,
+        "outcome" => "ok",
+    )
+    .increment(1);
 }
 
 fn outcome_mismatch(name: &'static str) {
-    counter!("thesis_experiment_outcome", 1, "name" => name, "kind" => "experimental_and_compare", "outcome" => "mismatch");
+    counter!(
+        "thesis_experiment_outcome",
+        "name" => name,
+        "kind" => "experimental_and_compare",
+        "outcome" => "mismatch",
+    )
+    .increment(1);
 }
 
 fn outcome<T, E>(name: &'static str, kind: &'static str, result: &Result<T, E>)
@@ -204,61 +233,69 @@ impl<T, Err, C, E, R, M> Experiment<Result<T, Err>, C, E, R, M> {
         Err: Display,
     {
         let span = info_span!("Experiment::run", name = self.name);
-        counter!("thesis_experiment_run_total", 1, "name" => self.name);
+        counter!("thesis_experiment_run_total", "name" => self.name).increment(1);
 
         async move {
             match self.rollout_strategy.rollout_decision() {
                 RolloutDecision::UseControl => {
-                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "control");
+                    counter!(
+                        "thesis_experiment_run_variant",
+                        "name" => self.name,
+                        "kind" => "control",
+                    )
+                    .increment(1);
 
                     let result = self.control_builder.await;
                     outcome(self.name, "control", &result);
 
                     result
-                },
+                }
                 RolloutDecision::UseExperimentalAndCompare => {
-                    counter!("thesis_experiment_run_variant", 1, "name" => self.name, "kind" => "experimental_and_compare");
+                    counter!(
+                        "thesis_experiment_run_variant",
+                        "name" => self.name,
+                        "kind" => "experimental_and_compare",
+                    )
+                    .increment(1);
 
                     let (control, experimental) =
                         tokio::join!(self.control_builder, self.experimental_builder);
 
-                        outcome(self.name, "control", &control);
-                        outcome(self.name, "experimental", &experimental);
+                    outcome(self.name, "control", &control);
+                    outcome(self.name, "experimental", &experimental);
 
-                        match (control, experimental) {
-                            (Ok(control), Ok(experimental)) => {
-                                if control != experimental {
-                                    outcome_mismatch(self.name);
-
-                                    let mismatch = Mismatch {
-                                        control: Ok(control),
-                                        experimental: Ok(experimental),
-                                    };
-
-                                    return (self.on_mismatch)(mismatch);
-                                }
-
-                                Ok(control)
-                            }
-                            (Ok(control), Err(_)) => {
+                    match (control, experimental) {
+                        (Ok(control), Ok(experimental)) => {
+                            if control != experimental {
                                 outcome_mismatch(self.name);
 
-                                Ok(control)
-                            }
-                            (Err(control), Ok(experimental)) => {
-                                    outcome_mismatch(self.name);
+                                let mismatch = Mismatch {
+                                    control: Ok(control),
+                                    experimental: Ok(experimental),
+                                };
 
-                                    let mismatch = Mismatch {
-                                        control: Err(control),
-                                        experimental: Ok(experimental),
-                                    };
+                                return (self.on_mismatch)(mismatch);
+                            }
 
-                                    return (self.on_mismatch)(mismatch);
-                            }
-                            (Err(control), Err(_)) => {
-                                Err(control)
-                            }
+                            Ok(control)
                         }
+                        (Ok(control), Err(_)) => {
+                            outcome_mismatch(self.name);
+
+                            Ok(control)
+                        }
+                        (Err(control), Ok(experimental)) => {
+                            outcome_mismatch(self.name);
+
+                            let mismatch = Mismatch {
+                                control: Err(control),
+                                experimental: Ok(experimental),
+                            };
+
+                            (self.on_mismatch)(mismatch)
+                        }
+                        (Err(control), Err(_)) => Err(control),
+                    }
                 }
             }
         }
@@ -401,7 +438,7 @@ mod tests {
             .await;
 
         match exists {
-            Ok(true) => {},
+            Ok(true) => {}
             x => panic!("Unexpected result: {:?}", x),
         }
 
