@@ -42,9 +42,9 @@
 //! ```
 
 pub mod experiment;
-pub mod rollout;
 pub mod mismatch;
+pub mod rollout;
 
 pub use experiment::Experiment;
+pub use mismatch::{Mismatch, MismatchHandler};
 pub use rollout::{RolloutDecision, RolloutStrategy};
-pub use mismatch::{MismatchHandler, Mismatch};
