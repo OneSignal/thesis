@@ -19,6 +19,6 @@
 
 # 0.6.0
 
-- Upgrade to `metrics` 0.24
+- Upgrade to `metrics` >=0.22, <=0.24
 - Add `thesis_experiment_run_duration` histogram for variant runtime
 - Allow `RolloutDecision` to be passed directly to `rollout_strategy`
