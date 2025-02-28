@@ -35,7 +35,7 @@ impl<T> Experiment<T, (), (), (), mismatch::AlwaysControl> {
     }
 }
 
-async fn instrument_control<F, T>(name: &str, future: F) -> T
+async fn instrument_control<F, T>(name: &'static str, future: F) -> T
 where
     F: Future<Output = T>,
 {
@@ -47,7 +47,7 @@ where
     .await
 }
 
-async fn instrument_experimental<F, T>(name: &str, future: F) -> T
+async fn instrument_experimental<F, T>(name: &'static str, future: F) -> T
 where
     F: Future<Output = T>,
 {
@@ -62,11 +62,10 @@ where
     .await
 }
 
-async fn measure_duration<F, T>(name: &str, kind: &'static str, future: F) -> T
+async fn measure_duration<F, T>(name: &'static str, kind: &'static str, future: F) -> T
 where
     F: Future<Output = T>,
 {
-    let name = name.to_owned();
     let start = Instant::now();
     let output = future.await;
     let duration = start.elapsed();
