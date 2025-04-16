@@ -528,13 +528,18 @@ mod tests {
 
     #[tokio::test]
     async fn it_runs_experimental_and_ignores_control() {
+        let mut not_seen = true;
         let exists = Experiment::new("test")
-            .control(async { false })
+            .control(async {
+                not_seen = false;
+                not_seen
+            })
             .experimental(async { true })
             .rollout_strategy(RolloutDecision::UseExperimental)
             .run()
             .await;
 
         assert!(exists);
+        assert!(not_seen);
     }
 }
