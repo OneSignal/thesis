@@ -509,7 +509,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn it_calls_experimental_and_ignores_control() {
+    async fn it_runs_experimental_result_and_ignores_control() {
         let mut seen = false;
         let exists = Experiment::new("test")
             .control(async {
@@ -523,6 +523,22 @@ mod tests {
 
         assert_eq!(exists, Ok(true));
         // should not change seen due to only UseExperimental
-        assert_eq!(seen, false);
+        assert!(!seen);
+    }
+
+    #[tokio::test]
+    async fn it_runs_experimental_and_ignores_control() {
+        let mut experimental = false;
+        let exists = Experiment::new("test")
+            .control(async { false })
+            .experimental(async {
+                experimental = !experimental;
+                experimental
+            })
+            .rollout_strategy(RolloutDecision::UseExperimental)
+            .run()
+            .await;
+
+        assert!(exists);
     }
 }
