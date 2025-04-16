@@ -193,6 +193,16 @@ impl<T, C, E, R, M> Experiment<T, C, E, R, M> {
 
                     control
                 }
+                RolloutDecision::UseExperimental => {
+                    counter!(
+                        "thesis_experiment_run_variant",
+                        "name" => self.name,
+                        "kind" => "experimental",
+                    )
+                    .increment(1);
+
+                    instrument_experimental(self.name, self.experimental_builder).await
+                }
             }
         }
         .instrument(span)
@@ -326,6 +336,20 @@ impl<T, Err, C, E, R, M> Experiment<Result<T, Err>, C, E, R, M> {
                         }
                         (Err(control), Err(_)) => Err(control),
                     }
+                }
+                RolloutDecision::UseExperimental => {
+                    counter!(
+                        "thesis_experiment_run_variant",
+                        "name" => self.name,
+                        "kind" => "experimental",
+                    )
+                    .increment(1);
+
+                    let result =
+                        instrument_experimental(self.name, self.experimental_builder).await;
+                    outcome(self.name, "experimental", &result);
+
+                    result
                 }
             }
         }
@@ -482,5 +506,40 @@ mod tests {
         }
 
         assert!(seen);
+    }
+
+    #[tokio::test]
+    async fn it_runs_experimental_result_and_ignores_control() {
+        let mut seen = false;
+        let exists = Experiment::new("test")
+            .control(async {
+                seen = true;
+                Err::<bool, &str>("failed")
+            })
+            .experimental(async { Ok::<_, &str>(true) })
+            .rollout_strategy(RolloutDecision::UseExperimental)
+            .run_result()
+            .await;
+
+        assert_eq!(exists, Ok(true));
+        // should not change seen due to only UseExperimental
+        assert!(!seen);
+    }
+
+    #[tokio::test]
+    async fn it_runs_experimental_and_ignores_control() {
+        let mut not_seen = true;
+        let exists = Experiment::new("test")
+            .control(async {
+                not_seen = false;
+                not_seen
+            })
+            .experimental(async { true })
+            .rollout_strategy(RolloutDecision::UseExperimental)
+            .run()
+            .await;
+
+        assert!(exists);
+        assert!(not_seen);
     }
 }
