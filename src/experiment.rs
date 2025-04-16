@@ -528,13 +528,9 @@ mod tests {
 
     #[tokio::test]
     async fn it_runs_experimental_and_ignores_control() {
-        let mut experimental = false;
         let exists = Experiment::new("test")
             .control(async { false })
-            .experimental(async {
-                experimental = !experimental;
-                experimental
-            })
+            .experimental(async { true })
             .rollout_strategy(RolloutDecision::UseExperimental)
             .run()
             .await;
