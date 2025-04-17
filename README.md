@@ -71,9 +71,9 @@ the `tracing` crate, as well as some metrics via the `metrics` crate.
 If your experimental (or control) methods may return an error, you should use
 the `run_result` method on the `Experiment` builder. This method has special
 handling and metrics reporting for `Result` types. When
-`RolloutDecision::UseControl` is used and the experimental method is not
-called, `run_result` works the same as `run`. Nothing special happens, even
-if the control method returns an error. Here's what happens when
+`RolloutDecision::UseControl` or `RolloutDecision::UseExperimental` are used,
+`run_result` works the same as `run`. Nothing special happens, even if the
+block returns an error. Here's what happens when
 `RolloutDecision::UseExperimentalAndCompare` is used.
 
 | Control  | Experimental | Return Value             | Metrics (label values of `thesis_experiment_outcome`)                                                                   | Logs                                                                                                      |
