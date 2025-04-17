@@ -1,6 +1,6 @@
 # 0.1.0
 
-- Initial relese
+- Initial release
 
 # 0.2.0
 
@@ -22,3 +22,7 @@
 - Upgrade to `metrics` >=0.22, <=0.24
 - Add `thesis_experiment_run_duration` histogram for variant runtime
 - Allow `RolloutDecision` to be passed directly to `rollout_strategy`
+
+# 0.7.0
+
+- Add `RolloutDecision::UseExperimental` enum variant

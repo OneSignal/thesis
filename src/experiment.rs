@@ -522,17 +522,16 @@ mod tests {
             .await;
 
         assert_eq!(exists, Ok(true));
-        // should not change seen due to only UseExperimental
         assert!(!seen);
     }
 
     #[tokio::test]
     async fn it_runs_experimental_and_ignores_control() {
-        let mut not_seen = true;
+        let mut seen = false;
         let exists = Experiment::new("test")
             .control(async {
-                not_seen = false;
-                not_seen
+                seen = true;
+                false
             })
             .experimental(async { true })
             .rollout_strategy(RolloutDecision::UseExperimental)
@@ -540,6 +539,6 @@ mod tests {
             .await;
 
         assert!(exists);
-        assert!(not_seen);
+        assert!(!seen);
     }
 }
